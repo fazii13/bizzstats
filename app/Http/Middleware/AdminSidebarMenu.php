@@ -547,6 +547,33 @@ class AdminSidebarMenu
                     ['icon' => 'fa fas fa-minus-circle']
                 )->order(45);
             }
+
+            //Income dropdown
+            $menu->dropdown(
+                __('income.income'),
+                function ($sub) {
+                    $sub->url(
+                        action([\App\Http\Controllers\IncomeController::class, 'index']),
+                        __('income.list_income'),
+                        ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'income' && request()->segment(2) == null]
+                    );
+                    $sub->url(
+                        action([\App\Http\Controllers\IncomeController::class, 'create']),
+                        __('income.add_income'),
+                        ['icon' => 'fa fas fa-plus-circle', 'active' => request()->segment(1) == 'income' && request()->segment(2) == 'create']
+                    );
+
+                    if (auth()->user()->can('income.add') || auth()->user()->can('income.edit')) {
+                        $sub->url(
+                            action([\App\Http\Controllers\IncomeCategoryController::class, 'index']),
+                            __('income.income_categories'),
+                            ['icon' => 'fa fas fa-circle', 'active' => request()->segment(1) == 'income-categories']
+                        );
+                    }
+                },
+                ['icon' => 'fa fas fa-money-bill-alt']
+            )->order(46);
+
             //Accounts dropdown
             if (auth()->user()->can('account.access') && in_array('account', $enabled_modules)) {
                 $menu->dropdown(

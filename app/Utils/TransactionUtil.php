@@ -18,6 +18,7 @@ use App\Product;
 use App\PurchaseLine;
 use App\Restaurant\ResTable;
 use App\TaxRate;
+use App\Income;
 use App\Transaction;
 use App\TransactionPayment;
 use App\TransactionSellLine;
@@ -5568,6 +5569,25 @@ class TransactionUtil extends Util
         //Expense
         $data['total_expense'] = $transaction_totals['total_expense'];
 
+        //Income - Get total income for the date range
+        $income_query = Income::where('business_id', $business_id)
+            ->whereDate('payment_date', '>=', $start_date)
+            ->whereDate('payment_date', '<=', $end_date);
+
+        if (! empty($location_id)) {
+            $income_query->where('location_id', $location_id);
+        }
+
+        if (! empty($user_id)) {
+            $income_query->where('created_by', $user_id);
+        }
+
+        if ($permitted_locations != 'all') {
+            $income_query->whereIn('location_id', $permitted_locations);
+        }
+
+        $data['total_income'] = $income_query->sum('final_total') ?? 0;
+
         //Stock adjustments
         $data['total_adjustment'] = $transaction_totals['total_adjustment'];
         $data['total_recovered'] = $transaction_totals['total_recovered'];
@@ -5630,7 +5650,7 @@ class TransactionUtil extends Util
         //                         + $data['total_purchase_return']
         //                         - $data['total_sell_return'];
         $data['net_profit'] = $module_total + $gross_profit
-                                + ($data['total_sell_round_off'] + $data['total_recovered'] + $data['total_sell_shipping_charge'] + $data['total_purchase_discount'] + $data['total_sell_additional_expense'] + $data['total_sell_return_discount']
+                                + ($data['total_sell_round_off'] + $data['total_recovered'] + $data['total_sell_shipping_charge'] + $data['total_purchase_discount'] + $data['total_sell_additional_expense'] + $data['total_sell_return_discount'] + $data['total_income']
                                 ) - ($data['total_reward_amount'] + $data['total_expense'] + $data['total_adjustment'] + $data['total_transfer_shipping_charges'] + $data['total_purchase_shipping_charge'] + $data['total_purchase_additional_expense'] + $data['total_sell_discount']
                                 );
 
@@ -5781,6 +5801,95 @@ class TransactionUtil extends Util
         $this->updatePaymentStatus($transaction->id, $transaction->final_total);
 
         return $transaction;
+    }
+
+    public function createIncome($request, $business_id, $user_id, $format_data = true)
+    {
+        $income_data = $request->only(['ref_no', 'location_id', 'final_total', 'additional_notes', 'tax_id', 
+            'income_category_id', 'work_order_number', 'payment_method']);
+
+        $income_data['business_id'] = $business_id;
+        $income_data['created_by'] = $user_id;
+        
+        // Use payment_date if provided, otherwise use current date
+        if ($request->has('payment_date')) {
+            $income_data['payment_date'] = $format_data ? $this->uf_date($request->input('payment_date'), true) : $request->input('payment_date');
+        } else {
+            $income_data['payment_date'] = \Carbon::now();
+        }
+
+        $income_data['final_total'] = $format_data ? $this->num_uf(
+                $income_data['final_total']
+            ) : $income_data['final_total'];
+
+        $income_data['total_before_tax'] = $income_data['final_total'];
+        if (! empty($income_data['tax_id'])) {
+            $tax_details = TaxRate::find($income_data['tax_id']);
+            $income_data['total_before_tax'] = $this->calc_percentage_base($income_data['final_total'], $tax_details->amount);
+            $income_data['tax_amount'] = $income_data['final_total'] - $income_data['total_before_tax'];
+        }
+
+        //Update reference count
+        $ref_count = $this->setAndGetReferenceCount('income', $business_id);
+        //Generate reference number
+        if (empty($income_data['ref_no'])) {
+            $income_data['ref_no'] = $this->generateReferenceNumber('income', $ref_count, $business_id);
+        }
+
+        //upload document
+        $document_name = $this->uploadFile($request, 'document', 'documents');
+        if (! empty($document_name)) {
+            $income_data['document'] = $document_name;
+        }
+
+        $income = Income::create($income_data);
+
+        return $income;
+    }
+
+    public function updateIncome($request, $id, $business_id, $format_data = true)
+    {
+        $income = Income::where('business_id', $business_id)
+                        ->findOrFail($id);
+
+        $income_data = $request->only(['ref_no', 'location_id', 'final_total', 'additional_notes', 'tax_id', 
+            'income_category_id', 'work_order_number', 'payment_method']);
+
+        if ($request->has('payment_date')) {
+            $income_data['payment_date'] = $format_data ? $this->uf_date($request->input('payment_date'), true) : $request->input('payment_date');
+        }
+
+        $final_total = $income->final_total;
+        if ($request->has('final_total')) {
+            $income_data['final_total'] = $format_data ? $this->num_uf(
+                $request->input('final_total')
+            ) : $request->input('final_total');
+            $final_total = $income_data['final_total'];
+        }
+
+        $income_data['total_before_tax'] = $final_total;
+        $tax_id = ! empty($request->input('tax_id')) ? $request->input('tax_id') : $income->tax_id;
+        
+        if (! empty($tax_id)) {
+            $income_data['tax_id'] = $tax_id;
+            $tax_details = TaxRate::find($tax_id);
+            $income_data['total_before_tax'] = $this->calc_percentage_base($final_total, $tax_details->amount);
+            $income_data['tax_amount'] = $final_total - $income_data['total_before_tax'];
+        } else {
+            $income_data['tax_id'] = null;
+            $income_data['tax_amount'] = 0;
+            $income_data['total_before_tax'] = $final_total;
+        }
+
+        //upload document
+        $document_name = $this->uploadFile($request, 'document', 'documents');
+        if (! empty($document_name)) {
+            $income_data['document'] = $document_name;
+        }
+
+        $income->update($income_data);
+
+        return $income;
     }
 
     public function updateExpense($request, $id, $business_id, $format_data = true)

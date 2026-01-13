@@ -2,18 +2,6 @@
     @component('components.widget')
         <table class="table table-striped">
             <tr>
-                <th>{{ __('report.opening_stock') }} <br><small class="text-muted">(@lang('lang_v1.by_purchase_price'))</small>:</th>
-                <td>
-                    <span class="display_currency" data-currency_symbol="true">{{$data['opening_stock']}}</span>
-                </td>
-            </tr>
-            <tr>
-                <th>{{ __('report.opening_stock') }} <br><small class="text-muted">(@lang('lang_v1.by_sale_price'))</small>:</th>
-                <td>
-                    <span id="opening_stock_by_sp"><i class="fa fa-sync fa-spin fa-fw "></i></span>
-                </td>
-            </tr>
-            <tr>
                 <th>{{ __('home.total_purchase') }}:<br><small class="text-muted">(@lang('product.exc_of_tax'), @lang('sale.discount'))</small></th>
                 <td>
                     <span class="display_currency" data-currency_symbol="true">{{$data['total_purchase']}}</span>
@@ -83,18 +71,6 @@
     @component('components.widget')
         <table class="table table-striped">
             <tr>
-                <th>{{ __('report.closing_stock') }} <br><small class="text-muted">(@lang('lang_v1.by_purchase_price'))</small>:</th>
-                <td>
-                    <span class="display_currency" data-currency_symbol="true">{{$data['closing_stock']}}</span>
-                </td>
-            </tr>
-            <tr>
-                <th>{{ __('report.closing_stock') }} <br><small class="text-muted">(@lang('lang_v1.by_sale_price'))</small>:</th>
-                <td>
-                    <span id="closing_stock_by_sp"><i class="fa fa-sync fa-spin fa-fw "></i></span>
-                </td>
-            </tr>
-            <tr>
                 <th>{{ __('home.total_sell') }}: <br>
                     <!-- sub type for total sales -->
                     @if(count($data['total_sell_by_subtype']) > 1)
@@ -156,6 +132,12 @@
                 </td>
             </tr>
             <tr>
+                <th>{{ __('income.income') }}:</th>
+                <td>
+                    <span class="display_currency" data-currency_symbol="true">{{$data['total_income']}}</span>
+                </td>
+            </tr>
+            <tr>
                 <td colspan="2">
                 &nbsp;
                 </td>
@@ -192,7 +174,7 @@
             {{ __('report.net_profit') }}: 
             <span class="display_currency" data-currency_symbol="true">{{$data['net_profit']}}</span>
         </h3>
-        <small class="help-block">@lang('lang_v1.gross_profit') + (@lang('lang_v1.total_sell_shipping_charge') + @lang('lang_v1.sell_additional_expense') + @lang('report.total_stock_recovered') + @lang('lang_v1.total_purchase_discount') + @lang('lang_v1.total_sell_round_off') 
+        <small class="help-block">@lang('lang_v1.gross_profit') + (@lang('lang_v1.total_sell_shipping_charge') + @lang('lang_v1.sell_additional_expense') + @lang('report.total_stock_recovered') + @lang('lang_v1.total_purchase_discount') + @lang('lang_v1.total_sell_round_off') + @lang('income.income') 
         @foreach($data['right_side_module_data'] as $module_data)
             @if(!empty($module_data['add_to_net_profit']))
                 + {{$module_data['label']}} 

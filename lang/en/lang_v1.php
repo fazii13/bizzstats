@@ -1047,6 +1047,7 @@ return [
     'purchase_report' => 'Purchase Report',
     'sale_report' => 'Sale Report',
     'payment_date' => 'Payment Date',
+    'work_order_number' => 'Work Order Number',
     'year_month' => 'Year/Month',
     'lead' => 'Lead',
     'featured_products' => 'Featured Products',
