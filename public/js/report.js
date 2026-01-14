@@ -735,7 +735,12 @@ $(document).ready(function() {
         });
         updateProfitLoss();
     }
-    $('#profit_loss_location_filter').change(function() {
+    $('#profit_loss_location_filter, #profit_loss_work_order_filter').on('change', function() {
+        updateProfitLoss();
+    });
+    
+    // Also handle select2:select event for select2 dropdowns
+    $(document).on('select2:select select2:unselect', '#profit_loss_location_filter, #profit_loss_work_order_filter', function() {
         updateProfitLoss();
     });
 

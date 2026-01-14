@@ -2399,7 +2399,7 @@ class TransactionUtil extends Util
      * @param  int  $transaction_id
      * @return array
      */
-    public function getPurchaseTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations = null)
+    public function getPurchaseTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations = null, $work_order_number = null)
     {
         $query = Transaction::where('business_id', $business_id)
                         ->where('type', 'purchase')
@@ -2436,6 +2436,11 @@ class TransactionUtil extends Util
         //Filter by the location
         if (! empty($user_id)) {
             $query->where('transactions.created_by', $user_id);
+        }
+
+        //Filter by work order number
+        if (! empty($work_order_number)) {
+            $query->where('transactions.work_order_number', $work_order_number);
         }
 
         $purchase_details = $query->first();
@@ -2531,7 +2536,7 @@ class TransactionUtil extends Util
      * @param  int  $transaction_id
      * @return array
      */
-    public function getSellTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $created_by = null, $permitted_locations = null)
+    public function getSellTotals($business_id, $start_date = null, $end_date = null, $location_id = null, $created_by = null, $permitted_locations = null, $work_order_number = null)
     {
         $query = Transaction::where('transactions.business_id', $business_id)
                     ->where('transactions.type', 'sell')
@@ -2568,6 +2573,11 @@ class TransactionUtil extends Util
 
         if (! empty($created_by)) {
             $query->where('transactions.created_by', $created_by);
+        }
+
+        //Filter by work order number
+        if (! empty($work_order_number)) {
+            $query->where('transactions.work_order_number', $work_order_number);
         }
 
         $sell_details = $query->first();
@@ -4414,7 +4424,8 @@ class TransactionUtil extends Util
         $end_date = null,
         $location_id = null,
         $created_by = null,
-        $permitted_locations = null
+        $permitted_locations = null,
+        $work_order_number = null
         ) {
         $query = Transaction::where('transactions.business_id', $business_id);
 
@@ -4454,6 +4465,11 @@ class TransactionUtil extends Util
         //Filter by created_by
         if (! empty($created_by)) {
             $query->where('transactions.created_by', $created_by);
+        }
+
+        //Filter by work order number
+        if (! empty($work_order_number)) {
+            $query->where('transactions.work_order_number', $work_order_number);
         }
 
         if (in_array('purchase_return', $transaction_types)) {
@@ -4594,7 +4610,7 @@ class TransactionUtil extends Util
         return $output;
     }
 
-    public function getGrossProfit($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations)
+    public function getGrossProfit($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations, $work_order_number = null)
     {
         $query = TransactionSellLine::join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
             ->leftjoin('transaction_sell_lines_purchase_lines as TSPL', 'transaction_sell_lines.id', '=', 'TSPL.sell_line_id')
@@ -4642,6 +4658,11 @@ class TransactionUtil extends Util
 
         if (! empty($user_id)) {
             $query->where('sale.created_by', $user_id);
+        }
+
+        //Filter by work order number
+        if (! empty($work_order_number)) {
+            $query->where('sale.work_order_number', $work_order_number);
         }
 
         $gross_profit_obj = $query->first();
@@ -5474,7 +5495,7 @@ class TransactionUtil extends Util
     }
 
     //
-    public function getProfitLossDetails($business_id, $location_id, $start_date, $end_date, $user_id = null, $permitted_locations = null)
+    public function getProfitLossDetails($business_id, $location_id, $start_date, $end_date, $user_id = null, $permitted_locations = null, $work_order_number = null)
     {
         //For Opening stock date should be 1 day before
         $day_before_start_date = \Carbon::createFromFormat('Y-m-d', $start_date)->subDay()->format('Y-m-d');
@@ -5501,7 +5522,8 @@ class TransactionUtil extends Util
             $end_date,
             $location_id,
             $user_id,
-            $permitted_locations
+            $permitted_locations,
+            $work_order_number
         );
 
         //Get Sell details
@@ -5511,7 +5533,8 @@ class TransactionUtil extends Util
             $end_date,
             $location_id,
             $user_id,
-            $permitted_locations
+            $permitted_locations,
+            $work_order_number
         );
 
         $transaction_types = [
@@ -5525,7 +5548,8 @@ class TransactionUtil extends Util
             $end_date,
             $location_id,
             $user_id,
-            $permitted_locations
+            $permitted_locations,
+            $work_order_number
         );
 
         $gross_profit = $this->getGrossProfit(
@@ -5534,7 +5558,8 @@ class TransactionUtil extends Util
             $end_date,
             $location_id,
             $user_id,
-            $permitted_locations
+            $permitted_locations,
+            $work_order_number
         );
 
         $data['total_purchase_shipping_charge'] = ! empty($purchase_details['total_shipping_charges']) ? $purchase_details['total_shipping_charges'] : 0;
@@ -5586,6 +5611,11 @@ class TransactionUtil extends Util
 
         if ($permitted_locations != 'all') {
             $income_query->whereIn('location_id', $permitted_locations);
+        }
+
+        //Filter by work order number
+        if (! empty($work_order_number)) {
+            $income_query->where('work_order_number', $work_order_number);
         }
 
         $data['total_income'] = $income_query->sum('final_total') ?? 0;

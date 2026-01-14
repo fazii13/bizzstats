@@ -10,6 +10,7 @@ use App\Charts\CommonChart;
 use App\Contact;
 use App\CustomerGroup;
 use App\ExpenseCategory;
+use App\Income;
 use App\Product;
 use App\PurchaseLine;
 use App\Restaurant\ResTable;
@@ -104,9 +105,10 @@ class ReportController extends Controller
             $end_date = ! empty(request()->input('end_date')) ? request()->input('end_date') : $fy['end'];
     
             $user_id = request()->input('user_id') ?? null;
+            $work_order_number = request()->input('work_order_number') ?? null;
 
             $permitted_locations = auth()->user()->permitted_locations();
-            $data = $this->transactionUtil->getProfitLossDetails($business_id, $location_id, $start_date, $end_date, $user_id, $permitted_locations);
+            $data = $this->transactionUtil->getProfitLossDetails($business_id, $location_id, $start_date, $end_date, $user_id, $permitted_locations, $work_order_number);
     
             // $data['closing_stock'] = $data['closing_stock'] - $data['total_sell_return'];
 
@@ -115,7 +117,29 @@ class ReportController extends Controller
 
         $business_locations = BusinessLocation::forDropdown($business_id, true);
 
-        return view('report.profit_loss', compact('business_locations'));
+        // Get unique work order numbers from transactions
+        $work_order_numbers = Transaction::where('business_id', $business_id)
+            ->whereNotNull('work_order_number')
+            ->where('work_order_number', '!=', '')
+            ->distinct()
+            ->orderBy('work_order_number', 'asc')
+            ->pluck('work_order_number', 'work_order_number')
+            ->toArray();
+
+        // Also get from incomes table
+        $income_work_orders = \App\Income::where('business_id', $business_id)
+            ->whereNotNull('work_order_number')
+            ->where('work_order_number', '!=', '')
+            ->distinct()
+            ->orderBy('work_order_number', 'asc')
+            ->pluck('work_order_number', 'work_order_number')
+            ->toArray();
+
+        // Merge and remove duplicates
+        $work_order_numbers = array_unique(array_merge($work_order_numbers, $income_work_orders));
+        asort($work_order_numbers);
+
+        return view('report.profit_loss', compact('business_locations', 'work_order_numbers'));
     }
 
     /**

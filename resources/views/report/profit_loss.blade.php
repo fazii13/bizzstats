@@ -14,7 +14,18 @@
     <div class="print_section"><h2>{{session()->get('business.name')}} - @lang( 'report.profit_loss' )</h2></div>
     
     <div class="row no-print">
-        <div class="col-md-3 col-md-offset-7 col-xs-6">
+        <div class="col-md-3 col-md-offset-4 col-xs-6">
+            <div class="input-group">
+                <span class="input-group-addon bg-light-blue"><i class="fa fa-briefcase"></i></span>
+                 <select class="form-control select2" id="profit_loss_work_order_filter">
+                    <option value="">@lang('lang_v1.all')</option>
+                    @foreach($work_order_numbers as $key => $value)
+                        <option value="{{ $key }}">{{ $value }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
+        <div class="col-md-3 col-xs-6">
             <div class="input-group">
                 <span class="input-group-addon bg-light-blue"><i class="fa fa-map-marker"></i></span>
                  <select class="form-control select2" id="profit_loss_location_filter">
@@ -145,6 +156,7 @@
                             .data('daterangepicker')
                             .endDate.format('YYYY-MM-DD');
                         d.location_id = $('#profit_loss_location_filter').val();
+                        d.work_order_number = $('#profit_loss_work_order_filter').val();
                     }
                 },
                 columns: [
@@ -179,6 +191,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -213,6 +226,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -247,6 +261,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -281,6 +296,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -315,6 +331,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -349,6 +366,7 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                                 d.location_id = $('#profit_loss_location_filter').val();
+                                d.work_order_number = $('#profit_loss_work_order_filter').val();
                             }
                         },
                         columns: [
@@ -377,8 +395,9 @@
                                     .data('daterangepicker')
                                     .endDate.format('YYYY-MM-DD');
                 var location_id = $('#profit_loss_location_filter').val();
+                var work_order_number = $('#profit_loss_work_order_filter').val();
 
-                var url = '/reports/get-profit/day?start_date=' + start_date + '&end_date=' + end_date + '&location_id=' + location_id;
+                var url = '/reports/get-profit/day?start_date=' + start_date + '&end_date=' + end_date + '&location_id=' + location_id + '&work_order_number=' + (work_order_number || '');
                 $.ajax({
                         url: url,
                         dataType: 'html',
@@ -397,6 +416,18 @@
             } else if (target == '#profit_by_products') {
                 profit_by_products_table.ajax.reload();
             }
+        });
+    });
+    
+    // Ensure work order filter triggers update
+    $(document).ready(function() {
+        $('#profit_loss_work_order_filter').on('change', function() {
+            updateProfitLoss();
+        });
+        
+        // Also handle select2 events
+        $('#profit_loss_work_order_filter').on('select2:select select2:unselect', function() {
+            updateProfitLoss();
         });
     });
 </script>

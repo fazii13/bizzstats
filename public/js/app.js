@@ -2555,7 +2555,8 @@ function updateProfitLoss(start = null, end = null, location_id = null, selector
     if(location_id == null){
         var location_id = $('#profit_loss_location_filter').val();
     }
-    var data = { start_date: start, end_date: end, location_id: location_id };
+    var work_order_number = $('#profit_loss_work_order_filter').val();
+    var data = { start_date: start, end_date: end, location_id: location_id, work_order_number: work_order_number };
     selector = selector == null ? $('#pl_data_div') : selector;
     var loader = '<div class="text-center">' + __fa_awesome() + '</div>';
     selector.html(loader);
