@@ -144,6 +144,7 @@ class TransactionUtil extends Util
             'additional_expense_key_3' => ! empty($input['additional_expense_key_3']) ? $input['additional_expense_key_3'] : null,
             'additional_expense_key_4' => ! empty($input['additional_expense_key_4']) ? $input['additional_expense_key_4'] : null,
             'is_kitchen_order' => ! empty($input['is_kitchen_order']) ? 1 : 0,
+            'work_order_number' => ! empty($input['work_order_number']) ? $input['work_order_number'] : null,
 
         ]);
 
@@ -262,6 +263,7 @@ class TransactionUtil extends Util
             'additional_expense_key_3' => ! empty($input['additional_expense_key_3']) ? $input['additional_expense_key_3'] : null,
             'additional_expense_key_4' => ! empty($input['additional_expense_key_4']) ? $input['additional_expense_key_4'] : null,
             'is_kitchen_order' => ! empty($input['is_kitchen_order']) ? 1 : 0,
+            'work_order_number' => ! empty($input['work_order_number']) ? $input['work_order_number'] : null,
         ];
 
         if (! empty($input['transaction_date'])) {
@@ -5634,22 +5636,31 @@ class TransactionUtil extends Util
             }
         }
 
-        // $data['net_profit'] = $module_total + $data['total_sell']
-        //                         + $data['closing_stock']
-        //                         - $data['total_purchase']
-        //                         - $data['total_sell_discount']
-        //                         + $data['total_sell_round_off']
-        //                         - $data['total_reward_amount']
-        //                         - $data['opening_stock']
-        //                         - $data['total_expense']
-        //                         + $data['total_recovered']
-        //                         - $data['total_transfer_shipping_charges']
-        //                         - $data['total_purchase_shipping_charge']
-        //                         + $data['total_sell_shipping_charge']
-        //                         + $data['total_purchase_discount']
-        //                         + $data['total_purchase_return']
-        //                         - $data['total_sell_return'];
-        $data['net_profit'] = $module_total + $gross_profit
+        // Calculate Revenue (Total Sales)
+        $data['revenue'] = $data['total_sell'] ?? 0;
+
+        // Calculate Cost of Sale (Purchase + related costs)
+        $data['cost_of_sale'] = ($data['total_purchase'] ?? 0) 
+                                + ($data['total_adjustment'] ?? 0)
+                                + ($data['total_purchase_shipping_charge'] ?? 0)
+                                + ($data['total_purchase_additional_expense'] ?? 0)
+                                + ($data['total_transfer_shipping_charges'] ?? 0)
+                                - ($data['total_purchase_return'] ?? 0)
+                                - ($data['total_purchase_discount'] ?? 0);
+
+        // Calculate Gross Profit = Revenue - Cost of Sale
+        $data['gross_profit_simplified'] = $data['revenue'] - $data['cost_of_sale'];
+
+        // Admin Expenses = Total Expense
+        $data['admin_expenses'] = $data['total_expense'] ?? 0;
+
+        // Calculate Net Profit = Gross Profit + Income - Admin Expenses
+        $data['net_profit'] = $data['gross_profit_simplified'] 
+                                + ($data['total_income'] ?? 0) 
+                                - $data['admin_expenses'];
+
+        // Keep old calculation for backward compatibility
+        $data['net_profit_old'] = $module_total + $gross_profit
                                 + ($data['total_sell_round_off'] + $data['total_recovered'] + $data['total_sell_shipping_charge'] + $data['total_purchase_discount'] + $data['total_sell_additional_expense'] + $data['total_sell_return_discount'] + $data['total_income']
                                 ) - ($data['total_reward_amount'] + $data['total_expense'] + $data['total_adjustment'] + $data['total_transfer_shipping_charges'] + $data['total_purchase_shipping_charge'] + $data['total_purchase_additional_expense'] + $data['total_sell_discount']
                                 );
@@ -5743,7 +5754,7 @@ class TransactionUtil extends Util
     {
         $transaction_data = $request->only(['ref_no', 'transaction_date',
             'location_id', 'final_total', 'expense_for', 'additional_notes',
-            'expense_category_id', 'tax_id', 'contact_id', ]);
+            'expense_category_id', 'tax_id', 'contact_id', 'work_order_number']);
 
         $transaction_data['business_id'] = $business_id;
         $transaction_data['created_by'] = $user_id;
@@ -5923,6 +5934,9 @@ class TransactionUtil extends Util
 
         if ($request->has('expense_category_id')) {
             $transaction_data['expense_category_id'] = $request->input('expense_category_id');
+        }
+        if ($request->has('work_order_number')) {
+            $transaction_data['work_order_number'] = $request->input('work_order_number');
         }
         $final_total = $request->has('final_total') ? $request->input('final_total') : $transaction->final_total;
         if ($request->has('final_total')) {

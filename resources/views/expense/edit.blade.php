@@ -34,6 +34,12 @@
         </div>
         <div class="col-sm-4">
           <div class="form-group">
+            {!! Form::label('work_order_number', __('lang_v1.work_order_number').':') !!}
+            {!! Form::text('work_order_number', $expense->work_order_number, ['class' => 'form-control', 'placeholder' => __('lang_v1.work_order_number')]); !!}
+          </div>
+        </div>
+        <div class="col-sm-4">
+          <div class="form-group">
             {!! Form::label('ref_no', __('purchase.ref_no').':*') !!}
             {!! Form::text('ref_no', $expense->ref_no, ['class' => 'form-control', 'required']); !!}
             <p class="help-block">
