@@ -63,6 +63,13 @@
             
             <div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
               <div class="form-group">
+                {!! Form::label('work_order_number', __('lang_v1.work_order_number').':') !!}
+                {!! Form::text('work_order_number', $purchase->work_order_number, ['class' => 'form-control', 'placeholder' => __('lang_v1.work_order_number')]); !!}
+              </div>
+            </div>
+            
+            <div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
+              <div class="form-group">
                 {!! Form::label('transaction_date', __('purchase.purchase_date') . ':*') !!}
                 <div class="input-group">
                   <span class="input-group-addon">
