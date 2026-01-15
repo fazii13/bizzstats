@@ -2,10 +2,13 @@
   <div class="modal-content">
 
     {!! Form::open(['url' => action([\App\Http\Controllers\AccountController::class, 'store']), 'method' => 'post', 'id' => 'payment_account_form' ]) !!}
+    @if(isset($is_liability) && $is_liability)
+        {!! Form::hidden('is_liability', 1) !!}
+    @endif
 
     <div class="modal-header">
       <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-      <h4 class="modal-title">@lang( 'account.add_account' )</h4>
+      <h4 class="modal-title">@if(isset($is_liability) && $is_liability)@lang( 'liability.add_liability' )@else@lang( 'account.add_account' )@endif</h4>
     </div>
 
     <div class="modal-body">

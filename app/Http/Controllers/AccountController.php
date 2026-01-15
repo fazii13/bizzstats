@@ -45,6 +45,11 @@ class AccountController extends Controller
         }
 
         $business_id = session()->get('user.business_id');
+        $is_liability = false; // Default to false for regular accounts
+        if (request()->route()->getName() == 'account.liability' || request()->segment(2) == 'liability' || request()->input('is_liability') == 1) {
+            $is_liability = true;
+        }
+        
         if (request()->ajax()) {
             $accounts = Account::leftjoin('account_transactions as AT', 'AT.account_id', '=', 'accounts.id')
             ->leftjoin(
@@ -60,8 +65,18 @@ class AccountController extends Controller
                 'pat.id'
             )
             ->leftJoin('users AS u', 'accounts.created_by', '=', 'u.id')
-                                ->where('accounts.business_id', $business_id)
-                                ->select(['accounts.name', 'accounts.account_number', 'accounts.note', 'accounts.id', 'accounts.account_type_id',
+                                ->where('accounts.business_id', $business_id);
+            
+            // Filter by isLiability if viewing liabilities
+            if ($is_liability) {
+                $accounts->where('accounts.isLiability', 1);
+            } else {
+                $accounts->where(function($query) {
+                    $query->where('accounts.isLiability', 0)->orWhereNull('accounts.isLiability');
+                });
+            }
+            
+            $accounts->select(['accounts.name', 'accounts.account_number', 'accounts.note', 'accounts.id', 'accounts.account_type_id',
                                     'ats.name as account_type_name',
                                     'pat.name as parent_account_type_name',
                                     'accounts.account_details',
@@ -187,7 +202,7 @@ class AccountController extends Controller
                                      ->get();
 
         return view('account.index')
-                ->with(compact('not_linked_payments', 'account_types'));
+                ->with(compact('not_linked_payments', 'account_types', 'is_liability'));
     }
 
     /**
@@ -202,13 +217,14 @@ class AccountController extends Controller
         }
 
         $business_id = session()->get('user.business_id');
+        $is_liability = request()->input('is_liability') == 1 || request()->segment(2) == 'liability';
         $account_types = AccountType::where('business_id', $business_id)
                                      ->whereNull('parent_account_type_id')
                                      ->with(['sub_types'])
                                      ->get();
 
         return view('account.create')
-                ->with(compact('account_types'));
+                ->with(compact('account_types', 'is_liability'));
     }
 
     /**
@@ -230,6 +246,11 @@ class AccountController extends Controller
                 $user_id = $request->session()->get('user.id');
                 $input['business_id'] = $business_id;
                 $input['created_by'] = $user_id;
+                
+                // Set isLiability if coming from liability page
+                if ($request->input('is_liability') == 1) {
+                    $input['isLiability'] = 1;
+                }
 
                 $account = Account::create($input);
 
@@ -496,13 +517,14 @@ class AccountController extends Controller
             $account = Account::where('business_id', $business_id)
                                 ->find($id);
 
+            $is_liability = !empty($account) && $account->isLiability == 1;
             $account_types = AccountType::where('business_id', $business_id)
                                      ->whereNull('parent_account_type_id')
                                      ->with(['sub_types'])
                                      ->get();
 
             return view('account.edit')
-                ->with(compact('account', 'account_types'));
+                ->with(compact('account', 'account_types', 'is_liability'));
         }
     }
 

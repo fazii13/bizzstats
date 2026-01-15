@@ -68,6 +68,7 @@ class AccountReportsController extends Controller
             );
 
             $account_details = $this->getAccountBalance($business_id, $end_date, 'others', $location_id);
+            $liability_details = $this->getLiabilityBalance($business_id, $end_date, $location_id);
             // $capital_account_details = $this->getAccountBalance($business_id, $end_date, 'capital');
 
             //Get Closing stock
@@ -84,6 +85,7 @@ class AccountReportsController extends Controller
                 'supplier_due' => $purchase_details['purchase_due'],
                 'customer_due' => $sell_details['invoice_due'] - $sell_return_details['total_sell_return_inc_tax'],
                 'account_balances' => $account_details,
+                'liability_details' => $liability_details,
                 'closing_stock' => $closing_stock,
                 'capital_account_details' => null,
             ];
@@ -161,6 +163,9 @@ class AccountReportsController extends Controller
                                 // ->NotClosed()
                                 ->whereNull('AT.deleted_at')
                                 ->where('business_id', $business_id)
+                                ->where(function($q) {
+                                    $q->where('accounts.isLiability', 0)->orWhereNull('accounts.isLiability');
+                                })
                                 ->whereDate('AT.operation_date', '<=', $end_date);
 
         // if ($account_type == 'others') {
@@ -216,6 +221,73 @@ class AccountReportsController extends Controller
                                 ->pluck('balance', 'name');
 
         return $account_details;
+    }
+
+    /**
+     * Retrives liability balances.
+     *
+     * @return Obj
+     */
+    private function getLiabilityBalance($business_id, $end_date, $location_id = null)
+    {
+        $query = Account::leftjoin(
+            'account_transactions as AT',
+            'AT.account_id',
+            '=',
+            'accounts.id'
+        )
+                                ->whereNull('AT.deleted_at')
+                                ->where('business_id', $business_id)
+                                ->where('accounts.isLiability', 1)
+                                ->whereDate('AT.operation_date', '<=', $end_date);
+
+        $permitted_locations = auth()->user()->permitted_locations();
+        $account_ids = [];
+        if ($permitted_locations != 'all') {
+            $locations = BusinessLocation::where('business_id', $business_id)
+                            ->whereIn('id', $permitted_locations)
+                            ->get();
+
+            foreach ($locations as $location) {
+                if (! empty($location->default_payment_accounts)) {
+                    $default_payment_accounts = json_decode($location->default_payment_accounts, true);
+                    foreach ($default_payment_accounts as $key => $account) {
+                        if (! empty($account['is_enabled']) && ! empty($account['account'])) {
+                            $account_ids[] = $account['account'];
+                        }
+                    }
+                }
+            }
+
+            $account_ids = array_unique($account_ids);
+        }
+
+        if ($permitted_locations != 'all') {
+            $query->whereIn('accounts.id', $account_ids);
+        }
+
+        if (! empty($location_id)) {
+            $location = BusinessLocation::find($location_id);
+            if (! empty($location->default_payment_accounts)) {
+                $default_payment_accounts = json_decode($location->default_payment_accounts, true);
+                $account_ids = [];
+                foreach ($default_payment_accounts as $key => $account) {
+                    if (! empty($account['is_enabled']) && ! empty($account['account'])) {
+                        $account_ids[] = $account['account'];
+                    }
+                }
+
+                $query->whereIn('accounts.id', $account_ids);
+            }
+        }
+
+        $liability_details = $query->select(['name',
+            DB::raw("SUM( IF(AT.type='credit', amount, -1*amount) ) as balance"), ])
+                                ->groupBy('accounts.id')
+                                ->get()
+                                ->pluck('balance', 'name');
+
+        return $liability_details;
     }
 
     /**

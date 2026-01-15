@@ -411,6 +411,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::prefix('account')->group(function () {
         Route::resource('/account', AccountController::class);
+        Route::get('/liability', [AccountController::class, 'index'])->name('account.liability');
         Route::get('/fund-transfer/{id}', [AccountController::class, 'getFundTransfer']);
         Route::post('/fund-transfer', [AccountController::class, 'postFundTransfer']);
         Route::get('/deposit/{id}', [AccountController::class, 'getDeposit']);

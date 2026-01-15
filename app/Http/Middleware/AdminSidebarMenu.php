@@ -580,9 +580,14 @@ class AdminSidebarMenu
                     __('lang_v1.payment_accounts'),
                     function ($sub) {
                         $sub->url(
-                            action([\App\Http\Controllers\AccountController::class, 'index']),
+                            url('/account/account'),
                             __('account.list_accounts'),
                             ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'account' && request()->segment(2) == 'account']
+                        );
+                        $sub->url(
+                            url('/account/liability'),
+                            __('account.liability'),
+                            ['icon' => 'fa fas fa-list', 'active' => request()->segment(1) == 'account' && request()->segment(2) == 'liability']
                         );
                         $sub->url(
                             action([\App\Http\Controllers\AccountReportsController::class, 'balanceSheet']),
