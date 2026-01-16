@@ -67,6 +67,12 @@ class Account extends Model
             $query->where('is_closed', 0);
         }
 
+        // Exclude liabilities (isLiability == 1) from payment account dropdowns
+        $query->where(function($q) {
+            $q->where('isLiability', 0)
+              ->orWhereNull('isLiability');
+        });
+
         $accounts = $query->get();
 
         $dropdown = [];

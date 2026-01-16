@@ -79,15 +79,6 @@
                                         </td>
                                     </tr>
                                     <tr>
-                                        <th>@lang('report.closing_stock'):</th>
-                                        <td>
-                                            <input type="hidden" id="hidden_closing_stock" class="asset">
-                                            <span class="remote-data" id="closing_stock">
-                                                <i class="fas fa-sync fa-spin fa-fw"></i>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                    <tr>
                                         <th colspan="2">@lang('account.account_balances'):</th>
                                     </tr>
                                 </tbody>
