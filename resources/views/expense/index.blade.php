@@ -80,6 +80,7 @@
                     <table class="table table-bordered table-striped" id="expense_table">
                         <thead>
                             <tr>
+                                <th width="3%"></th>
                                 <th>@lang('messages.action')</th>
                                 <th>@lang('messages.date')</th>
                                 <th>@lang('purchase.ref_no')</th>
@@ -99,6 +100,7 @@
                         </thead>
                         <tfoot>
                             <tr class="bg-gray font-17 text-center footer-total">
+                                <td></td>
                                 <td colspan="7"><strong>@lang('sale.total'):</strong></td>
                                 <td class="footer_payment_status_count"></td>
                                 <td></td>

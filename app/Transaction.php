@@ -76,6 +76,11 @@ class Transaction extends Model
         return $this->belongsTo(\App\TaxRate::class, 'tax_id');
     }
 
+    public function expense_details()
+    {
+        return $this->hasMany(\App\ExpenseDetail::class, 'transaction_id');
+    }
+
     public function stock_adjustment_lines()
     {
         return $this->hasMany(\App\StockAdjustmentLine::class);

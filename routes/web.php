@@ -324,6 +324,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     //Expenses...
     Route::resource('expenses', ExpenseController::class);
+    Route::get('/expenses/get-details/{id}', [ExpenseController::class, 'getExpenseDetails']);
 
     //Income Categories...
     Route::resource('income-categories', IncomeCategoryController::class);

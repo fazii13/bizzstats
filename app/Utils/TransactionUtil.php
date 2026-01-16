@@ -25,6 +25,7 @@ use App\TransactionSellLine;
 use App\TransactionSellLinesPurchaseLines;
 use App\Variation;
 use App\VariationLocationDetails;
+use App\ExpenseDetail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\CashRegister;
@@ -4457,6 +4458,14 @@ class TransactionUtil extends Util
             if (in_array('payroll', $transaction_types)) {
                 $query->leftjoin('users as u', 'u.id', '=', 'transactions.expense_for')
                     ->where('u.location_id', $location_id);
+            } elseif (in_array('expense', $transaction_types) || in_array('expense_refund', $transaction_types)) {
+                // For expenses, filter by transaction location OR expense_details location
+                $query->where(function($q) use ($location_id) {
+                    $q->where('transactions.location_id', $location_id)
+                      ->orWhereHas('expense_details', function($exp_detail_q) use ($location_id) {
+                          $exp_detail_q->where('expense_details.location_id', $location_id);
+                      });
+                });
             } else {
                 $query->where('transactions.location_id', $location_id);
             }
@@ -4532,6 +4541,73 @@ class TransactionUtil extends Util
         }
 
         $transaction_totals = $query->first();
+        
+        // If location filter is active and expenses have expense_details, recalculate expense total
+        if (in_array('expense', $transaction_types) && !empty($location_id)) {
+            // Get all expense transactions that match the filter
+            $expense_query = Transaction::where('transactions.business_id', $business_id)
+                ->whereIn('type', ['expense', 'expense_refund'])
+                ->where(function($q) use ($location_id) {
+                    $q->where('transactions.location_id', $location_id)
+                      ->orWhereHas('expense_details', function($exp_detail_q) use ($location_id) {
+                          $exp_detail_q->where('expense_details.location_id', $location_id);
+                      });
+                });
+            
+            // Apply permitted locations filter
+            if (!empty($permitted_locations) && $permitted_locations != 'all') {
+                $expense_query->whereIn('transactions.location_id', $permitted_locations);
+            }
+            
+            if (! empty($start_date) && ! empty($end_date)) {
+                $expense_query->whereDate('transactions.transaction_date', '>=', $start_date)
+                    ->whereDate('transactions.transaction_date', '<=', $end_date);
+            }
+            
+            // Apply other filters
+            if (! empty($created_by)) {
+                $expense_query->where('transactions.created_by', $created_by);
+            }
+            
+            if (! empty($work_order_number)) {
+                $expense_query->where('transactions.work_order_number', $work_order_number);
+            }
+            
+            // Calculate expense from expense_details
+            $expense_transactions = $expense_query->with(['expense_details' => function($q) use ($location_id) {
+                $q->where('location_id', $location_id);
+            }])->get();
+            
+            $total_expense = 0;
+            $total_expense_refund = 0;
+            
+            foreach ($expense_transactions as $transaction) {
+                if ($transaction->type == 'expense') {
+                    if ($transaction->expense_details && $transaction->expense_details->count() > 0) {
+                        // Sum expense_details amounts for matching location
+                        $total_expense += $transaction->expense_details->sum('amount');
+                    } elseif ($transaction->location_id == $location_id) {
+                        // No expense_details, use final_total if location matches
+                        $total_expense += $transaction->final_total;
+                    }
+                } elseif ($transaction->type == 'expense_refund') {
+                    $total_expense_refund += $transaction->final_total;
+                }
+            }
+            
+            // Override the calculated total_expense with our custom calculation
+            if (property_exists($transaction_totals, 'total_expense')) {
+                $transaction_totals->total_expense = $total_expense;
+            } else {
+                $transaction_totals->total_expense = $total_expense;
+            }
+            
+            if (property_exists($transaction_totals, 'total_expense_refund')) {
+                $transaction_totals->total_expense_refund = $total_expense_refund;
+            } else {
+                $transaction_totals->total_expense_refund = $total_expense_refund;
+            }
+        }
         $output = [];
 
         if (in_array('purchase_return', $transaction_types)) {
@@ -5791,9 +5867,28 @@ class TransactionUtil extends Util
         $transaction_data['type'] = ! empty($request->input('is_refund')) && $request->input('is_refund') == 1 ? 'expense_refund' : 'expense';
         $transaction_data['status'] = 'final';
         $transaction_data['payment_status'] = 'due';
-        $transaction_data['final_total'] = $format_data ? $this->num_uf(
-                $transaction_data['final_total']
-            ) : $transaction_data['final_total'];
+
+        // Check if expense_details are provided (new structure with multiple rows)
+        $expense_details = $request->input('expense_details', []);
+        $has_expense_details = !empty($expense_details) && is_array($expense_details);
+
+        // Calculate final_total from expense_details if they exist, otherwise use form input
+        if ($has_expense_details) {
+            $final_total = 0;
+            foreach ($expense_details as $detail) {
+                if (!empty($detail['amount'])) {
+                    $amount = $format_data ? $this->num_uf($detail['amount']) : $detail['amount'];
+                    $final_total += $amount;
+                }
+            }
+            $transaction_data['final_total'] = $final_total;
+        } else {
+            // Use existing form input
+            $transaction_data['final_total'] = $format_data ? $this->num_uf(
+                    $transaction_data['final_total']
+                ) : $transaction_data['final_total'];
+        }
+
         if ($request->has('transaction_date')) {
             $transaction_data['transaction_date'] = $format_data ? $this->uf_date($transaction_data['transaction_date'], true) : $transaction_data['transaction_date'];
         } else {
@@ -5804,11 +5899,25 @@ class TransactionUtil extends Util
             $transaction_data['expense_sub_category_id'] = $request->input('expense_sub_category_id');
         }
 
-        $transaction_data['total_before_tax'] = $transaction_data['final_total'];
-        if (! empty($transaction_data['tax_id'])) {
-            $tax_details = TaxRate::find($transaction_data['tax_id']);
-            $transaction_data['total_before_tax'] = $this->calc_percentage_base($transaction_data['final_total'], $tax_details->amount);
-            $transaction_data['tax_amount'] = $transaction_data['final_total'] - $transaction_data['total_before_tax'];
+        // Set location_id from first expense_detail if available, otherwise use form input
+        if ($has_expense_details && !empty($expense_details[0]['location_id'])) {
+            $transaction_data['location_id'] = $expense_details[0]['location_id'];
+        }
+
+        // Tax calculation - if expense_details exist, we'll handle tax per line item
+        // For main transaction, set tax to null if using expense_details
+        if ($has_expense_details) {
+            $transaction_data['tax_id'] = null;
+            $transaction_data['total_before_tax'] = $transaction_data['final_total'];
+            $transaction_data['tax_amount'] = 0;
+        } else {
+            // Original tax calculation for single expense
+            $transaction_data['total_before_tax'] = $transaction_data['final_total'];
+            if (! empty($transaction_data['tax_id'])) {
+                $tax_details = TaxRate::find($transaction_data['tax_id']);
+                $transaction_data['total_before_tax'] = $this->calc_percentage_base($transaction_data['final_total'], $tax_details->amount);
+                $transaction_data['tax_amount'] = $transaction_data['final_total'] - $transaction_data['total_before_tax'];
+            }
         }
 
         if ($request->has('is_recurring')) {
@@ -5833,6 +5942,22 @@ class TransactionUtil extends Util
         }
 
         $transaction = Transaction::create($transaction_data);
+
+        // Create expense_details records if provided
+        if ($has_expense_details) {
+            foreach ($expense_details as $detail) {
+                if (!empty($detail['location_id']) && !empty($detail['amount'])) {
+                    $expense_detail_data = [
+                        'transaction_id' => $transaction->id,
+                        'location_id' => $detail['location_id'],
+                        'tax_id' => !empty($detail['tax_id']) ? $detail['tax_id'] : null,
+                        'amount' => $format_data ? $this->num_uf($detail['amount']) : $detail['amount'],
+                        'note' => !empty($detail['note']) ? $detail['note'] : null,
+                    ];
+                    ExpenseDetail::create($expense_detail_data);
+                }
+            }
+        }
 
         $payments = ! empty($request->input('payment')) ? $request->input('payment') : [];
         //add expense payment
@@ -5968,24 +6093,51 @@ class TransactionUtil extends Util
         if ($request->has('work_order_number')) {
             $transaction_data['work_order_number'] = $request->input('work_order_number');
         }
-        $final_total = $request->has('final_total') ? $request->input('final_total') : $transaction->final_total;
-        if ($request->has('final_total')) {
-            $transaction_data['final_total'] = $format_data ? $this->num_uf(
-                $final_total
-            ) : $final_total;
-            $final_total = $transaction_data['final_total'];
+        // Check if expense_details are provided (new structure with multiple rows) - check this FIRST
+        $expense_details = $request->input('expense_details', []);
+        $has_expense_details = !empty($expense_details) && is_array($expense_details);
+
+        // Calculate final_total from expense_details if they exist, otherwise use form input
+        if ($has_expense_details) {
+            $final_total = 0;
+            foreach ($expense_details as $detail) {
+                if (!empty($detail['amount'])) {
+                    $amount = $format_data ? $this->num_uf($detail['amount']) : $detail['amount'];
+                    $final_total += $amount;
+                }
+            }
+            $transaction_data['final_total'] = $final_total;
+        } else {
+            // Use form input for final_total if expense_details are not provided
+            $final_total = $request->has('final_total') ? $request->input('final_total') : $transaction->final_total;
+            if ($request->has('final_total')) {
+                $transaction_data['final_total'] = $format_data ? $this->num_uf(
+                    $final_total
+                ) : $final_total;
+                $final_total = $transaction_data['final_total'];
+            } else {
+                // If not provided in request and no expense_details, use existing transaction value
+                $final_total = $transaction->final_total;
+                $transaction_data['final_total'] = $final_total;
+            }
         }
 
-        $transaction_data['total_before_tax'] = $transaction_data['final_total'];
+        // Now calculate tax and total_before_tax based on the determined final_total
         $tax_id = ! empty($request->input('tax_id')) ? $request->input('tax_id') : $transaction->tax_id;
         if (! empty($tax_id)) {
             $transaction_data['tax_id'] = $tax_id;
             $tax_details = TaxRate::find($tax_id);
-            $transaction_data['total_before_tax'] = $this->calc_percentage_base($final_total, $tax_details->amount);
-            $transaction_data['tax_amount'] = $final_total - $transaction_data['total_before_tax'];
+            if ($tax_details) {
+                $transaction_data['total_before_tax'] = $this->calc_percentage_base($final_total, $tax_details->amount);
+                $transaction_data['tax_amount'] = $final_total - $transaction_data['total_before_tax'];
+            } else {
+                $transaction_data['total_before_tax'] = $final_total;
+                $transaction_data['tax_amount'] = 0;
+            }
         } else {
             $transaction_data['tax_id'] = null;
             $transaction_data['tax_amount'] = 0;
+            $transaction_data['total_before_tax'] = $final_total;
         }
 
         //upload document
@@ -6002,6 +6154,32 @@ class TransactionUtil extends Util
 
         $transaction->update($transaction_data);
         $transaction->save();
+
+        // Update expense_details if provided
+        if ($has_expense_details) {
+            // Delete existing expense_details
+            $transaction->expense_details()->delete();
+            
+            // Create new expense_details
+            foreach ($expense_details as $detail) {
+                if (!empty($detail['location_id']) && !empty($detail['amount'])) {
+                    $expense_detail_data = [
+                        'transaction_id' => $transaction->id,
+                        'location_id' => $detail['location_id'],
+                        'tax_id' => !empty($detail['tax_id']) ? $detail['tax_id'] : null,
+                        'amount' => $format_data ? $this->num_uf($detail['amount']) : $detail['amount'],
+                        'note' => !empty($detail['note']) ? $detail['note'] : null,
+                    ];
+                    ExpenseDetail::create($expense_detail_data);
+                }
+            }
+            
+            // Update location_id from first expense_detail if available
+            if (!empty($expense_details[0]['location_id'])) {
+                $transaction->location_id = $expense_details[0]['location_id'];
+                $transaction->save();
+            }
+        }
 
         //update payment status
         $this->updatePaymentStatus($transaction->id, $transaction->final_total);
