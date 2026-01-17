@@ -20,6 +20,8 @@ use App\Http\Controllers\DocumentAndNoteController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\GroupTaxController;
+use App\Http\Controllers\IncomeCategoryController;
+use App\Http\Controllers\IncomeController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ImportOpeningStockController;
 use App\Http\Controllers\ImportProductsController;
@@ -322,6 +324,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     //Expenses...
     Route::resource('expenses', ExpenseController::class);
+    Route::get('/expenses/get-details/{id}', [ExpenseController::class, 'getExpenseDetails']);
+
+    //Income Categories...
+    Route::resource('income-categories', IncomeCategoryController::class);
+
+    //Income...
+    Route::resource('income', IncomeController::class);
 
     //Transaction payments...
     // Route::get('/payments/opening-balance/{contact_id}', 'TransactionPaymentController@getOpeningBalancePayments');
@@ -403,6 +412,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::prefix('account')->group(function () {
         Route::resource('/account', AccountController::class);
+        Route::get('/liability', [AccountController::class, 'index'])->name('account.liability');
         Route::get('/fund-transfer/{id}', [AccountController::class, 'getFundTransfer']);
         Route::post('/fund-transfer', [AccountController::class, 'postFundTransfer']);
         Route::get('/deposit/{id}', [AccountController::class, 'getDeposit']);

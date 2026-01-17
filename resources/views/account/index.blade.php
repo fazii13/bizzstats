@@ -1,11 +1,22 @@
 @extends('layouts.app')
-@section('title', __('lang_v1.payment_accounts'))
+@section('title', !empty($is_liability) && $is_liability ? __('lang_v1.payment_liabilities') : __('lang_v1.payment_accounts'))
 
 @section('content')
 <!-- Content Header (Page header) -->
 <section class="content-header">
-    <h1>@lang('lang_v1.payment_accounts')
-        <small>@lang('account.manage_your_account')</small>
+    <h1>
+        @if(!empty($is_liability) && $is_liability)
+            @lang('lang_v1.payment_liabilities')
+        @else
+            @lang('lang_v1.payment_accounts')
+        @endif
+        <small>
+            @if(!empty($is_liability) && $is_liability)
+                @lang('liability.manage_your_liability')
+            @else
+                @lang('account.manage_your_account')
+            @endif
+        </small>
     </h1>
 </section>
 
@@ -14,13 +25,15 @@
     @if(!empty($not_linked_payments))
         <div class="row">
             <div class="col-sm-12">
-                <div class="alert alert-danger">
-                    <ul>
-                        @if(!empty($not_linked_payments))
-                            <li>{!! __('account.payments_not_linked_with_account', ['payments' => $not_linked_payments]) !!} <a href="{{action([\App\Http\Controllers\AccountReportsController::class, 'paymentAccountReport'])}}">@lang('account.view_details')</a></li>
-                        @endif
-                    </ul>
-                </div>
+                @if(empty($is_liability) || !$is_liability)
+                    <div class="alert alert-danger">
+                        <ul>
+                            @if(!empty($not_linked_payments))
+                                <li>{!! __('account.payments_not_linked_with_account', ['payments' => $not_linked_payments]) !!} <a href="{{action([\App\Http\Controllers\AccountReportsController::class, 'paymentAccountReport'])}}">@lang('account.view_details')</a></li>
+                            @endif
+                        </ul>
+                    </div>
+                @endif
             </div>
         </div>
     @endif
@@ -31,7 +44,13 @@
                 <ul class="nav nav-tabs">
                     <li class="active">
                         <a href="#other_accounts" data-toggle="tab">
-                            <i class="fa fa-book"></i> <strong>@lang('account.accounts')</strong>
+                            <i class="fa fa-book"></i> <strong>
+                                @if(!empty($is_liability) && $is_liability)
+                                    @lang('liability.liabilities')
+                                @else
+                                    @lang('account.accounts')
+                                @endif
+                            </strong>
                         </a>
                     </li>
                     {{--
@@ -45,7 +64,11 @@
                     <li>
                         <a href="#account_types" data-toggle="tab">
                             <i class="fa fa-list"></i> <strong>
-                            @lang('lang_v1.account_types') </strong>
+                            @if(!empty($is_liability) && $is_liability)
+                                @lang('lang_v1.liability_types')
+                            @else
+                                @lang('lang_v1.account_types')
+                            @endif </strong>
                         </a>
                     </li>
                 </ul>
@@ -60,7 +83,7 @@
                                     <div class="col-md-8">
                                         <button type="button" class="btn btn-primary btn-modal pull-right" 
                                             data-container=".account_model"
-                                            data-href="{{action([\App\Http\Controllers\AccountController::class, 'create'])}}">
+                                            data-href="{{action([\App\Http\Controllers\AccountController::class, 'create'])}}{{ (isset($is_liability) && $is_liability) ? '?is_liability=1' : '' }}">
                                             <i class="fa fa-plus"></i> @lang( 'messages.add' )</button>
                                     </div>
                                 @endcomponent
@@ -287,9 +310,12 @@
                         processing: true,
                         serverSide: true,
                         ajax: {
-                            url: '/account/account?account_type=other',
+                            url: '{{ isset($is_liability) && $is_liability ? "/account/liability" : "/account/account" }}?account_type=other',
                             data: function(d){
                                 d.account_status = $('#account_status').val();
+                                @if(isset($is_liability) && $is_liability)
+                                d.is_liability = 1;
+                                @endif
                             }
                         },
                         columnDefs:[{

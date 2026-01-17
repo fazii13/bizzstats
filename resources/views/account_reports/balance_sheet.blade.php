@@ -58,6 +58,12 @@
                                     </span>
                                 </td>
                                 </tr>
+                                <tr>
+                                    <th colspan="2">@lang('account.liability'):</th>
+                                </tr>
+                                <tbody id="liability_balances" class="pl-20-td">
+                                    <tr><td colspan="2"><i class="fas fa-sync fa-spin fa-fw"></i></td></tr>
+                                </tbody>
                             </table>
                         </td>
                         <td>
@@ -68,15 +74,6 @@
                                         <td>
                                             <input type="hidden" id="hidden_customer_due" class="asset">
                                             <span class="remote-data" id="customer_due">
-                                                <i class="fas fa-sync fa-spin fa-fw"></i>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th>@lang('report.closing_stock'):</th>
-                                        <td>
-                                            <input type="hidden" id="hidden_closing_stock" class="asset">
-                                            <span class="remote-data" id="closing_stock">
                                                 <i class="fas fa-sync fa-spin fa-fw"></i>
                                             </span>
                                         </td>
@@ -169,6 +166,7 @@
 
         $('table#assets_table tbody#account_balances').html('<tr><td colspan="2"><i class="fas fa-sync fa-spin fa-fw"></i></td></tr>');
         $('table#assets_table tbody#capital_account_balances').html('<tr><td colspan="2"><i class="fas fa-sync fa-spin fa-fw"></i></td></tr>');
+        $('tbody#liability_balances').html('<tr><td colspan="2"><i class="fas fa-sync fa-spin fa-fw"></i></td></tr>');
 
         var end_date = $('input#end_date').val();
         var location_id = $('#bal_sheet_location_id').val()
@@ -191,6 +189,14 @@
                     var accnt_bal_with_sym = __currency_trans_from_en(result.account_balances[key], true);
                     var account_tr = '<tr><td class="pl-20-td">' + key + ':</td><td><input type="hidden" class="asset" value="' + accnt_bal + '">' + accnt_bal_with_sym + '</td></tr>';
                     $('table#assets_table tbody#account_balances').append(account_tr);
+                }
+                var liability_details = result.liability_details || {};
+                $('tbody#liability_balances').html('');
+                for (var key in liability_details) {
+                    var liab_bal = __currency_trans_from_en(result.liability_details[key]);
+                    var liab_bal_with_sym = __currency_trans_from_en(result.liability_details[key], true);
+                    var liability_tr = '<tr><td class="pl-20-td">' + key + ':</td><td><input type="hidden" class="liability" value="' + liab_bal + '">' + liab_bal_with_sym + '</td></tr>';
+                    $('tbody#liability_balances').append(liability_tr);
                 }
                 var capital_account_details = result.capital_account_details;
                 $('table#assets_table tbody#capital_account_balances').html('');

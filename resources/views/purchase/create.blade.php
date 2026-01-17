@@ -61,6 +61,12 @@
 					</div>
 				</div>
 			</div>
+			<div class="@if(!empty($default_purchase_status)) col-sm-4 @else col-sm-3 @endif">
+				<div class="form-group">
+					{!! Form::label('work_order_number', __('lang_v1.work_order_number').':') !!}
+					{!! Form::text('work_order_number', null, ['class' => 'form-control', 'placeholder' => __('lang_v1.work_order_number')]); !!}
+				</div>
+			</div>
 			<div class="col-sm-3 @if(!empty($default_purchase_status)) hide @endif">
 				<div class="form-group">
 					{!! Form::label('status', __('purchase.purchase_status') . ':*') !!} @show_tooltip(__('tooltip.order_status'))

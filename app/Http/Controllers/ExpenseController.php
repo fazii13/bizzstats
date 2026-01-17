@@ -94,7 +94,7 @@ class ExpenseController extends Controller
                             'c.name as contact_name',
                             'transactions.type'
                         )
-                        ->with(['recurring_parent'])
+                        ->with(['recurring_parent', 'expense_details.location', 'expense_details.tax'])
                         ->groupBy('transactions.id');
 
             //Add condition for expense for,used in sales representative expense report & list of expense
@@ -116,7 +116,13 @@ class ExpenseController extends Controller
             if (request()->has('location_id')) {
                 $location_id = request()->get('location_id');
                 if (! empty($location_id)) {
-                    $expenses->where('transactions.location_id', $location_id);
+                    // Filter by transaction location OR expense_details location
+                    $expenses->where(function($query) use ($location_id) {
+                        $query->where('transactions.location_id', $location_id)
+                              ->orWhereHas('expense_details', function($q) use ($location_id) {
+                                  $q->where('expense_details.location_id', $location_id);
+                              });
+                    });
                 }
             }
 
@@ -166,7 +172,31 @@ class ExpenseController extends Controller
                 });
             }
 
+            // Get location filter for details icon
+            $location_filter_for_details = request()->get('location_id');
+            
             return Datatables::of($expenses)
+                ->addColumn('details', function ($row) use ($location_filter_for_details) {
+                    if ($row->expense_details && $row->expense_details->count() > 0) {
+                        // If location filter is active, check if any details match
+                        if (!empty($location_filter_for_details)) {
+                            $has_matching_location = $row->expense_details->contains(function ($detail) use ($location_filter_for_details) {
+                                return $detail->location_id == $location_filter_for_details;
+                            });
+                            if ($has_matching_location) {
+                                return '<i class="fa fa-plus-circle text-success cursor-pointer expense-details-toggle" data-id="'.$row->id.'" title="'.__('lang_v1.view_details').'"></i>';
+                            }
+                            return '';
+                        }
+                        
+                        // No location filter - show icon if any details exist
+                        return '<i class="fa fa-plus-circle text-success cursor-pointer expense-details-toggle" data-id="'.$row->id.'" title="'.__('lang_v1.view_details').'"></i>';
+                    }
+                    return '';
+                })
+                ->addColumn('id', function ($row) {
+                    return $row->id;
+                })
                 ->addColumn(
                     'action',
                     '<div class="btn-group">
@@ -196,7 +226,7 @@ class ExpenseController extends Controller
                     <li><a href="{{action([\App\Http\Controllers\TransactionPaymentController::class, \'show\'], [$id])}}" class="view_payment_modal"><i class="fas fa-money-bill-alt" aria-hidden="true" ></i> @lang("purchase.view_payments")</a></li>
                     </ul></div>'
                 )
-                ->removeColumn('id')
+                // Don't remove id - we need it for the details toggle
                 ->editColumn(
                     'final_total',
                     '<span class="display_currency final-total" data-currency_symbol="true" data-orig-value="@if($type=="expense_refund"){{-1 * $final_total}}@else{{$final_total}}@endif">@if($type=="expense_refund") - @endif @format_currency($final_total)</span>'
@@ -253,7 +283,32 @@ class ExpenseController extends Controller
 
                     return $ref_no;
                 })
-                ->rawColumns(['final_total', 'action', 'payment_status', 'payment_due', 'ref_no', 'recur_details'])
+                ->addColumn('expense_details', function ($row) {
+                    // Format expense_details for JavaScript
+                    if ($row->expense_details && $row->expense_details->count() > 0) {
+                        return $row->expense_details->map(function ($detail) {
+                            // Format location name to match dropdown format: name (location_id)
+                            $location_name = null;
+                            if ($detail->location) {
+                                $location_name = $detail->location->name;
+                                if (!empty($detail->location->location_id)) {
+                                    $location_name .= ' (' . $detail->location->location_id . ')';
+                                }
+                            }
+                            
+                            return [
+                                'location_id' => $detail->location_id,
+                                'location' => $detail->location ? ['name' => $location_name] : null,
+                                'tax_id' => $detail->tax_id,
+                                'tax' => $detail->tax ? ['name' => $detail->tax->name, 'amount' => $detail->tax->amount] : null,
+                                'amount' => $detail->amount,
+                                'note' => $detail->note,
+                            ];
+                        })->toArray();
+                    }
+                    return [];
+                })
+                ->rawColumns(['final_total', 'action', 'payment_status', 'payment_due', 'ref_no', 'recur_details', 'details'])
                 ->make(true);
         }
 
@@ -288,6 +343,9 @@ class ExpenseController extends Controller
         if (! auth()->user()->can('expense.add')) {
             abort(403, 'Unauthorized action.');
         }
+
+
+        \Log::emergency('ExpenseController@create');
 
         $business_id = request()->session()->get('user.business_id');
 
@@ -354,6 +412,38 @@ class ExpenseController extends Controller
                 'document' => 'file|max:'.(config('constants.document_size_limit') / 1000),
             ]);
 
+            // Validate expense_details - require at least one detail row
+            $expense_details = $request->input('expense_details', []);
+            
+            // Filter out any empty entries (where both location_id and amount are empty)
+            $valid_expense_details = array_filter($expense_details, function($detail) {
+                return !empty($detail['location_id']) && !empty($detail['amount']);
+            });
+            
+            // Require at least one valid expense detail
+            if (empty($valid_expense_details)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['expense_details' => 'Please add at least one expense detail row with location and amount before submitting.'])
+                    ->with('status', ['success' => 0, 'msg' => 'Please add at least one expense detail row before submitting.']);
+            }
+            
+            // Validate the expense_details array structure
+            $request->validate([
+                'expense_details' => 'required|array|min:1',
+                'expense_details.*.location_id' => 'required|integer',
+                'expense_details.*.amount' => 'required|numeric|min:0.01',
+                'expense_details.*.tax_id' => 'nullable|integer',
+                'expense_details.*.note' => 'nullable|string|max:191',
+            ], [
+                'expense_details.required' => 'Please add at least one expense detail row.',
+                'expense_details.min' => 'Please add at least one expense detail row.',
+                'expense_details.*.location_id.required' => 'Location is required for each expense detail.',
+                'expense_details.*.amount.required' => 'Amount is required for each expense detail.',
+                'expense_details.*.amount.numeric' => 'Amount must be a valid number.',
+                'expense_details.*.amount.min' => 'Amount must be greater than 0.',
+            ]);
+
             $user_id = $request->session()->get('user.id');
 
             DB::beginTransaction();
@@ -389,6 +479,80 @@ class ExpenseController extends Controller
         }
 
         return redirect('expenses')->with('status', $output);
+    }
+
+    /**
+     * Get expense details for a specific expense
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function getExpenseDetails($id)
+    {
+        if (! auth()->user()->can('all_expense.access') && ! auth()->user()->can('view_own_expense')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $expense = Transaction::where('business_id', $business_id)
+                ->where('id', $id)
+                ->with(['expense_details.location', 'expense_details.tax'])
+                ->first();
+
+            if (!$expense) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => __('messages.not_found'),
+                    'expense_details' => [],
+                ]);
+            }
+
+            // Get location filter from request
+            $location_filter = request()->get('location_id');
+            
+            $expense_details = [];
+            if ($expense->expense_details && $expense->expense_details->count() > 0) {
+                // Filter by location if location filter is provided
+                $filtered_details = $expense->expense_details;
+                if (!empty($location_filter)) {
+                    $filtered_details = $filtered_details->filter(function ($detail) use ($location_filter) {
+                        return $detail->location_id == $location_filter;
+                    });
+                }
+                
+                $expense_details = $filtered_details->map(function ($detail) {
+                    // Format location name to match dropdown format: name (location_id)
+                    $location_name = null;
+                    if ($detail->location) {
+                        $location_name = $detail->location->name;
+                        if (!empty($detail->location->location_id)) {
+                            $location_name .= ' (' . $detail->location->location_id . ')';
+                        }
+                    }
+                    
+                    return [
+                        'location_id' => $detail->location_id,
+                        'location' => $detail->location ? ['name' => $location_name] : null,
+                        'tax_id' => $detail->tax_id,
+                        'tax' => $detail->tax ? ['name' => $detail->tax->name, 'amount' => $detail->tax->amount] : null,
+                        'amount' => $detail->amount,
+                        'note' => $detail->note,
+                    ];
+                })->values()->toArray();
+            }
+
+            return response()->json([
+                'success' => true,
+                'expense_details' => $expense_details,
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ]);
+        }
     }
 
     /**
@@ -428,6 +592,7 @@ class ExpenseController extends Controller
                                 ->pluck('name', 'id');
         $expense = Transaction::where('business_id', $business_id)
                                 ->where('id', $id)
+                                ->with(['expense_details.location', 'expense_details.tax'])
                                 ->first();
 
         $users = User::forDropdown($business_id, true, true);
@@ -475,6 +640,38 @@ class ExpenseController extends Controller
             if (! $this->moduleUtil->isSubscribed($business_id)) {
                 return $this->moduleUtil->expiredResponse(action([\App\Http\Controllers\ExpenseController::class, 'index']));
             }
+
+            // Validate expense_details - require at least one detail row
+            $expense_details = $request->input('expense_details', []);
+            
+            // Filter out any empty entries (where both location_id and amount are empty)
+            $valid_expense_details = array_filter($expense_details, function($detail) {
+                return !empty($detail['location_id']) && !empty($detail['amount']);
+            });
+            
+            // Require at least one valid expense detail
+            if (empty($valid_expense_details)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['expense_details' => 'Please add at least one expense detail row with location and amount before submitting.'])
+                    ->with('status', ['success' => 0, 'msg' => 'Please add at least one expense detail row before submitting.']);
+            }
+            
+            // Validate the expense_details array structure
+            $request->validate([
+                'expense_details' => 'required|array|min:1',
+                'expense_details.*.location_id' => 'required|integer',
+                'expense_details.*.amount' => 'required|numeric|min:0.01',
+                'expense_details.*.tax_id' => 'nullable|integer',
+                'expense_details.*.note' => 'nullable|string|max:191',
+            ], [
+                'expense_details.required' => 'Please add at least one expense detail row.',
+                'expense_details.min' => 'Please add at least one expense detail row.',
+                'expense_details.*.location_id.required' => 'Location is required for each expense detail.',
+                'expense_details.*.amount.required' => 'Amount is required for each expense detail.',
+                'expense_details.*.amount.numeric' => 'Amount must be a valid number.',
+                'expense_details.*.amount.min' => 'Amount must be greater than 0.',
+            ]);
 
             $expense = $this->transactionUtil->updateExpense($request, $id, $business_id);
 

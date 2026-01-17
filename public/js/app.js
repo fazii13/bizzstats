@@ -1461,6 +1461,7 @@ $(document).ready(function() {
             },
         },
         columns: [
+            { data: 'details', name: 'details', orderable: false, searchable: false, width: '3%' },
             { data: 'action', name: 'action', orderable: false, searchable: false },
             { data: 'transaction_date', name: 'transaction_date' },
             { data: 'ref_no', name: 'ref_no' },
@@ -1490,9 +1491,149 @@ $(document).ready(function() {
         },
         createdRow: function(row, data, dataIndex) {
             $(row)
-                .find('td:eq(4)')
+                .find('td:eq(6)')
                 .attr('class', 'clickable_td');
+            $(row).attr('data-id', data.id);
         },
+    });
+
+    // Array to track open expense detail rows
+    var expense_detail_rows = [];
+
+    // Function to format expense details table
+    function format_expense_details(data) {
+        if (!data.expense_details || data.expense_details.length === 0) {
+            return '<div class="alert alert-info">No details available</div>';
+        }
+
+        var html = '<div class="table-responsive" style="padding: 10px;">' +
+            '<table class="table table-bordered table-striped table-condensed" style="margin-bottom: 0;">' +
+            '<thead>' +
+            '<tr>' +
+            '<th>Business Location</th>' +
+            '<th>Applicable Tax</th>' +
+            '<th>Amount</th>' +
+            '<th>Note</th>' +
+            '</tr>' +
+            '</thead>' +
+            '<tbody>';
+
+        var total = 0;
+        data.expense_details.forEach(function(detail) {
+            var amount = parseFloat(detail.amount) || 0;
+            total += amount;
+            html += '<tr>' +
+                '<td>' + (detail.location && detail.location.name ? detail.location.name : '-') + '</td>' +
+                '<td>' + (detail.tax && detail.tax.name ? detail.tax.name + ' (' + detail.tax.amount + '%)' : '-') + '</td>' +
+                '<td class="display_currency" data-currency_symbol="true">' + __currency_trans_from_en(amount, true, false) + '</td>' +
+                '<td>' + (detail.note || '-') + '</td>' +
+                '</tr>';
+        });
+
+        html += '</tbody>' +
+            '<tfoot>' +
+            '<tr class="bg-gray">' +
+            '<td colspan="2" style="text-align: right;"><strong>Total:</strong></td>' +
+            '<td><strong class="display_currency" data-currency_symbol="true">' + __currency_trans_from_en(total, true, false) + '</strong></td>' +
+            '<td></td>' +
+            '</tr>' +
+            '</tfoot>' +
+            '</table>' +
+            '</div>';
+
+        return html;
+    }
+
+    // Handle expand/collapse for expense details
+    $('#expense_table tbody').on('click', 'i.expense-details-toggle', function() {
+        var icon = $(this);
+        var tr = icon.closest('tr');
+        var row = expense_table.row(tr);
+        var row_id = tr.attr('data-id');
+        var idx = $.inArray(row_id, expense_detail_rows);
+
+        if (row.child.isShown()) {
+            // Close the row
+            icon.removeClass('fa-minus-circle text-danger').addClass('fa-plus-circle text-success');
+            row.child.hide();
+            tr.removeClass('shown');
+            expense_detail_rows.splice(idx, 1);
+        } else {
+            // Open the row
+            icon.removeClass('fa-plus-circle text-success').addClass('fa-minus-circle text-danger');
+            
+            // Get the row data
+            var row_data = row.data();
+            var expense_id = row_data.id || tr.attr('data-id') || icon.attr('data-id');
+            
+            if (!expense_id) {
+                console.error('Expense ID not found');
+                row.child('<div class="alert alert-danger" style="padding: 10px;">@lang("messages.something_went_wrong")</div>').show();
+                tr.addClass('shown');
+                return;
+            }
+            
+            // Get current location filter from the table
+            var location_filter = $('select#location_id').val() || '';
+            
+            // Fetch expense details via AJAX (since server-side processing doesn't include nested data)
+            $.ajax({
+                url: '/expenses/get-details/' + expense_id,
+                type: 'GET',
+                data: { location_id: location_filter },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Expense details response for ID ' + expense_id + ':', response);
+                    if (response && response.success) {
+                        if (response.expense_details && response.expense_details.length > 0) {
+                            row_data.expense_details = response.expense_details;
+                            var childHtml = format_expense_details(row_data);
+                            console.log('Child HTML:', childHtml);
+                            row.child(childHtml).show();
+                            tr.addClass('shown');
+                            __currency_convert_recursively($('#expense_table'));
+                            if (idx === -1) {
+                                expense_detail_rows.push(row_id);
+                            }
+                        } else {
+                            var msg = response.msg || 'No expense details available';
+                            console.log('No details found:', msg);
+                            row.child('<div class="alert alert-info" style="padding: 10px;">' + msg + '</div>').show();
+                            tr.addClass('shown');
+                            if (idx === -1) {
+                                expense_detail_rows.push(row_id);
+                            }
+                        }
+                    } else {
+                        var errorMsg = (response && response.msg) ? response.msg : 'Unexpected response format';
+                        console.error('Unexpected response:', response);
+                        row.child('<div class="alert alert-warning" style="padding: 10px;">' + errorMsg + '</div>').show();
+                        tr.addClass('shown');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching expense details:', error);
+                    console.error('Status:', status);
+                    console.error('Response:', xhr.responseText);
+                    var errorMsg = 'Something went wrong';
+                    if (xhr.responseJSON && xhr.responseJSON.msg) {
+                        errorMsg = xhr.responseJSON.msg;
+                    }
+                    row.child('<div class="alert alert-danger" style="padding: 10px;">' + errorMsg + '</div>').show();
+                    tr.addClass('shown');
+                }
+            });
+        }
+    });
+
+    // Restore open rows on table redraw
+    expense_table.on('draw', function() {
+        $.each(expense_detail_rows, function(i, id) {
+            var tr = $('#expense_table tbody tr[data-id="' + id + '"]');
+            if (tr.length) {
+                tr.find('i.expense-details-toggle').trigger('click');
+            }
+        });
     });
 
     $('select#location_id, select#expense_for, select#expense_contact_filter, \
@@ -2555,7 +2696,8 @@ function updateProfitLoss(start = null, end = null, location_id = null, selector
     if(location_id == null){
         var location_id = $('#profit_loss_location_filter').val();
     }
-    var data = { start_date: start, end_date: end, location_id: location_id };
+    var work_order_number = $('#profit_loss_work_order_filter').val();
+    var data = { start_date: start, end_date: end, location_id: location_id, work_order_number: work_order_number };
     selector = selector == null ? $('#pl_data_div') : selector;
     var loader = '<div class="text-center">' + __fa_awesome() + '</div>';
     selector.html(loader);

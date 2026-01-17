@@ -272,6 +272,12 @@
 						</div>
 					</div>
 					@endcan
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('work_order_number', __('lang_v1.work_order_number').':') !!}
+							{!! Form::text('work_order_number', null, ['class' => 'form-control', 'placeholder' => __('lang_v1.work_order_number')]); !!}
+						</div>
+					</div>
 				
 				@php
 			        $custom_field_1_label = !empty($custom_labels['sell']['custom_field_1']) ? $custom_labels['sell']['custom_field_1'] : '';
